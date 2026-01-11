@@ -1,6 +1,6 @@
 """
-Main application for AI Trend & Inventory Manager (ATIM)
-Integrates Component A (Trend Analysis) and Component B (LLM Inventory Agent) fuck u
+Enhanced Main Application for AI Trend & Inventory Manager (ATIM)
+Beautiful terminal output with colors, tables, and progress bars
 """
 import sys
 from datetime import datetime
@@ -9,88 +9,61 @@ from llm_inventory_agent import InventoryAgent
 from config import CURRENT_SEASON
 from inventory_data import InventoryManager
 
+# Rich terminal library for beautiful output
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.markdown import Markdown
+from rich.layout import Layout
+from rich import box
+from rich.text import Text
+
+console = Console()
+
 
 def get_shoe_keywords(inventory_items: list = None, use_inventory: bool = True, additional_keywords: list = None) -> list:
-    """
-    Get list of shoe-related keywords for trend analysis.
-    
-    Args:
-        inventory_items: Optional list of InventoryItem objects (to avoid reloading)
-        use_inventory: If True, generate keywords from inventory CSV (default: True)
-        additional_keywords: Optional list of additional keywords to include
-    
-    Returns:
-        List of keywords for trend analysis
-    """
+    """Get list of shoe-related keywords for trend analysis."""
     keywords = []
     
     if use_inventory:
-        # Generate keywords from inventory CSV
         if inventory_items:
-            # Use provided inventory items
             items = inventory_items
         else:
-            # Load inventory items
             try:
                 inventory_manager = InventoryManager()
                 items = inventory_manager.get_all_inventory()
             except Exception as e:
-                print(f"   Warning: Could not load keywords from inventory: {e}")
-                print("   Using default keyword list instead...")
+                console.print(f"[yellow]⚠ Warning: Could not load keywords from inventory: {e}[/yellow]")
+                console.print("[yellow]   Using default keyword list instead...[/yellow]")
                 items = None
         
         if items:
-            # Convert product names to lowercase keywords
             for item in items:
-                # Use product name as keyword (convert to lowercase)
                 keyword = item.product_name.lower()
                 keywords.append(keyword)
         else:
-            # Fallback to default keywords
             keywords = [
-                "chunky sneakers",
-                "waterproof boots",
-                "espadrilles",
-                "ankle boots",
-                "retro runners",
-                "platform sandals",
-                "minimalist running shoes",
-                "suede boots",
-                "canvas shoes",
-                "running sneakers",
-                "hiking boots",
-                "dress shoes",
-                "loafers",
-                "high top sneakers",
-                "slip on shoes"
+                "chunky sneakers", "waterproof boots", "espadrilles",
+                "ankle boots", "retro runners", "platform sandals",
+                "minimalist running shoes", "suede boots", "canvas shoes",
+                "running sneakers", "hiking boots", "dress shoes",
+                "loafers", "high top sneakers", "slip on shoes"
             ]
     else:
-        # Use default manual keyword list
         keywords = [
-            "chunky sneakers",
-            "waterproof boots",
-            "espadrilles",
-            "ankle boots",
-            "retro runners",
-            "platform sandals",
-            "minimalist running shoes",
-            "suede boots",
-            "canvas shoes",
-            "running sneakers",
-            "hiking boots",
-            "dress shoes",
-            "loafers",
-            "high top sneakers",
-            "slip on shoes"
+            "chunky sneakers", "waterproof boots", "espadrilles",
+            "ankle boots", "retro runners", "platform sandals",
+            "minimalist running shoes", "suede boots", "canvas shoes",
+            "running sneakers", "hiking boots", "dress shoes",
+            "loafers", "high top sneakers", "slip on shoes"
         ]
     
-    # Add additional keywords if provided
     if additional_keywords:
         for keyword in additional_keywords:
             if keyword.lower() not in [k.lower() for k in keywords]:
                 keywords.append(keyword.lower())
     
-    # Remove duplicates while preserving order
     seen = set()
     unique_keywords = []
     for keyword in keywords:
@@ -103,91 +76,216 @@ def get_shoe_keywords(inventory_items: list = None, use_inventory: bool = True, 
 
 
 def get_upcoming_holidays() -> list:
-    """Get list of upcoming holidays/events (can be made dynamic)."""
-    # This can be enhanced to automatically detect upcoming holidays
+    """Get list of upcoming holidays/events."""
     return ["Labor Day", "Back to School", "Fall Fashion Week"]
 
 
-def main():
-    """Main application function."""
-    print("=" * 70)
-    print("AI TREND & INVENTORY MANAGER (ATIM)")
-    print("=" * 70)
-    print(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Current Season: {CURRENT_SEASON}")
-    print("=" * 70)
+def display_header():
+    """Display beautiful header."""
+    header_text = """
+    ╔═══════════════════════════════════════════════════════════╗
+    ║                                                           ║
+    ║          AI TREND & INVENTORY MANAGER (ATIM)             ║
+    ║                                                           ║
+    ║     Intelligent Inventory Optimization with AI           ║
+    ║                                                           ║
+    ╚═══════════════════════════════════════════════════════════╝
+    """
+    console.print(header_text, style="bold cyan")
+    console.print(f"📅 Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", style="dim")
+    console.print(f"🌡️  Current Season: {CURRENT_SEASON}", style="dim")
+    console.print()
+
+
+def display_inventory_summary(inventory_summary):
+    """Display inventory summary in a beautiful table."""
+    table = Table(title="📦 Inventory Overview", box=box.ROUNDED, show_header=True, header_style="bold magenta")
     
-    # Initialize components
-    print("\n[1/3] Initializing Trend Analyzer...")
-    trend_analyzer = TrendAnalyzer()
+    table.add_column("Metric", style="cyan", no_wrap=True)
+    table.add_column("Value", justify="right", style="green")
     
-    print("[2/3] Initializing Inventory Manager...")
-    inventory_manager = InventoryManager()
-    inventory_summary = inventory_manager.get_inventory_summary()
-    inventory_items = inventory_manager.get_all_inventory()
+    table.add_row("Total Products", str(inventory_summary['total_items']))
+    table.add_row("Low Stock Items", f"[yellow]{inventory_summary['low_stock_items']}[/yellow]")
+    table.add_row("Total Inventory Value", f"[green]${inventory_summary['total_inventory_value']:,.2f}[/green]")
     
-    print(f"   - Total Items: {inventory_summary['total_items']}")
-    print(f"   - Low Stock Items: {inventory_summary['low_stock_items']}")
-    print(f"   - Total Inventory Value: ${inventory_summary['total_inventory_value']:,.2f}")
+    console.print(table)
+    console.print()
+
+
+def display_trending_products(trending_products):
+    """Display trending products in a beautiful table."""
+    if not trending_products:
+        console.print("[yellow]⚠ No trending products found[/yellow]")
+        return
     
-    print("[3/3] Initializing LLM Inventory Agent...")
-    try:
-        inventory_agent = InventoryAgent()
-    except ValueError as e:
-        print(f"\nERROR: {e}")
-        print("\nPlease create a .env file with your GEMINI_API_KEY:")
-        print("GEMINI_API_KEY=your_api_key_here")
-        sys.exit(1)
-    
-    # Step 1: Analyze Trends (Component A)
-    print("\n" + "=" * 70)
-    print("COMPONENT A: TREND ANALYSIS")
-    print("=" * 70)
-    
-    # Get keywords from inventory CSV (default) or use manual list
-    # Pass inventory_items to avoid reloading the CSV
-    # You can also add additional keywords: get_shoe_keywords(inventory_items=inventory_items, additional_keywords=["new trend"])
-    keywords = get_shoe_keywords(inventory_items=inventory_items, use_inventory=True)
-    print(f"\nTotal keywords available: {len(keywords)}")
-    
-    # Show sample of keywords being analyzed
-    if len(keywords) > 10:
-        print(f"   Sample keywords: {', '.join(keywords[:10])}...")
-        print(f"   (Showing first 10 of {len(keywords)} total keywords)")
-    else:
-        print(f"   Keywords: {', '.join(keywords)}")
-    
-    # Limit keywords to avoid rate limits (Google Trends has strict rate limiting)
-    max_keywords_to_analyze = 15
-    if len(keywords) > max_keywords_to_analyze:
-        print(f"\n   Note: Analyzing first {max_keywords_to_analyze} keywords to avoid API rate limits.")
-        print(f"   To analyze all {len(keywords)} keywords, run multiple times or increase delays in trend_analysis.py")
-    
-    trending_products = trend_analyzer.get_high_confidence_trends(
-        keywords,
-        min_confidence=20.0,
-        max_keywords=max_keywords_to_analyze
+    table = Table(
+        title=f"📈 Top {min(10, len(trending_products))} Trending Products",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold cyan"
     )
     
-    # If no trends found due to rate limiting, create sample data for demonstration
-    if not trending_products:
-        print("\nWarning: No trend data retrieved (likely due to API rate limits).")
-        print("Creating sample trend data for demonstration purposes...")
+    table.add_column("Rank", style="dim", width=6, justify="center")
+    table.add_column("Product", style="cyan", no_wrap=False)
+    table.add_column("Status", justify="center", width=12)
+    table.add_column("Confidence", justify="right", width=12)
+    table.add_column("Velocity", justify="right", width=10)
+    table.add_column("Strength", justify="right", width=10)
+    
+    for i, trend in enumerate(trending_products[:10], 1):
+        # Color-code status
+        status = trend['status']
+        if status == "Rising":
+            status_display = "[green]↗ Rising[/green]"
+        elif status == "Declining":
+            status_display = "[red]↘ Declining[/red]"
+        elif status == "Peaking":
+            status_display = "[yellow]⬆ Peaking[/yellow]"
+        else:
+            status_display = "[dim]→ Stable[/dim]"
         
-        # Create sample trends based on inventory items
-        sample_keywords = keywords[:5]  # Use first 5 keywords
-        trending_products = []
+        # Color-code velocity
+        velocity = trend['velocity']
+        if velocity > 5:
+            velocity_str = f"[green]+{velocity:.1f}[/green]"
+        elif velocity < -5:
+            velocity_str = f"[red]{velocity:.1f}[/red]"
+        else:
+            velocity_str = f"[dim]{velocity:.1f}[/dim]"
+        
+        table.add_row(
+            f"#{i}",
+            trend['keyword'].title(),
+            status_display,
+            f"{trend['confidence']:.1f}",
+            velocity_str,
+            f"{trend['strength']:.1f}"
+        )
+    
+    console.print(table)
+    console.print()
+
+
+def display_recommendations(recommendations):
+    """Display AI recommendations in a beautiful panel."""
+    # Convert recommendations to markdown for better formatting
+    md = Markdown(recommendations)
+    
+    panel = Panel(
+        md,
+        title="🤖 AI-Powered Inventory Recommendations",
+        border_style="green",
+        box=box.DOUBLE,
+        padding=(1, 2)
+    )
+    
+    console.print(panel)
+    console.print()
+
+
+def display_low_stock_alerts(low_stock_items):
+    """Display low stock alerts."""
+    if not low_stock_items:
+        console.print("✅ [green]All items are above reorder point[/green]\n")
+        return
+    
+    table = Table(
+        title="⚠️  Low Stock Alerts",
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold yellow"
+    )
+    
+    table.add_column("Product", style="yellow")
+    table.add_column("Current Stock", justify="right", style="red")
+    table.add_column("Reorder Point", justify="right", style="dim")
+    table.add_column("Action Needed", style="bold red")
+    
+    for item in low_stock_items:
+        urgency = "🔴 URGENT" if item.current_stock < item.reorder_point * 0.5 else "🟡 REORDER"
+        table.add_row(
+            item.product_name,
+            str(item.current_stock),
+            str(item.reorder_point),
+            urgency
+        )
+    
+    console.print(table)
+    console.print()
+
+
+def main():
+    """Enhanced main application with beautiful output."""
+    display_header()
+    
+    # Initialize components with progress indicator
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        
+        task1 = progress.add_task("[cyan]Initializing Trend Analyzer...", total=None)
+        trend_analyzer = TrendAnalyzer()
+        progress.update(task1, completed=True)
+        
+        task2 = progress.add_task("[cyan]Loading Inventory Data...", total=None)
+        inventory_manager = InventoryManager()
+        inventory_summary = inventory_manager.get_inventory_summary()
+        inventory_items = inventory_manager.get_all_inventory()
+        progress.update(task2, completed=True)
+        
+        task3 = progress.add_task("[cyan]Initializing AI Agent...", total=None)
+        try:
+            inventory_agent = InventoryAgent()
+            progress.update(task3, completed=True)
+        except ValueError as e:
+            progress.stop()
+            console.print(f"\n[bold red]❌ ERROR:[/bold red] {e}")
+            console.print("\n[yellow]Please create a .env file with your GEMINI_API_KEY:[/yellow]")
+            console.print("[dim]GEMINI_API_KEY=your_api_key_here[/dim]")
+            sys.exit(1)
+    
+    console.print()
+    
+    # Display inventory summary
+    display_inventory_summary(inventory_summary)
+    
+    # Component A: Trend Analysis
+    console.print(Panel.fit(
+        "🔍 Analyzing Google Trends Data",
+        border_style="cyan",
+        box=box.DOUBLE
+    ))
+    console.print()
+    
+    keywords = get_shoe_keywords(inventory_items=inventory_items, use_inventory=True)
+    console.print(f"[dim]→ Total keywords available: {len(keywords)}[/dim]")
+    
+    max_keywords_to_analyze = 15
+    if len(keywords) > max_keywords_to_analyze:
+        console.print(f"[dim]→ Analyzing first {max_keywords_to_analyze} keywords[/dim]")
+    
+    console.print()
+    
+    # Fetch trends with progress
+    with console.status("[bold green]Fetching trend data from Google...", spinner="dots"):
+        trending_products = trend_analyzer.get_high_confidence_trends(
+            keywords,
+            min_confidence=20.0,
+            max_keywords=max_keywords_to_analyze
+        )
+    
+    console.print()
+    
+    # Fallback to sample data if needed
+    if not trending_products:
+        console.print("[yellow]⚠ No trend data retrieved. Using sample data...[/yellow]\n")
         import random
+        sample_keywords = keywords[:5]
+        trending_products = []
         
         for keyword in sample_keywords:
-            # Find matching inventory item
-            matching_item = None
-            for item in inventory_items:
-                if keyword.lower() in item.product_name.lower():
-                    matching_item = item
-                    break
-            
-            # Generate sample trend data
             base_strength = random.uniform(40, 80)
             velocity = random.uniform(-10, 15)
             confidence = abs(velocity) * 0.6 + base_strength * 0.4
@@ -210,89 +308,65 @@ def main():
                 "current_value": base_strength,
                 "peak_value": base_strength * 1.2
             })
-        
-        print(f"   Generated {len(trending_products)} sample trends for demonstration")
     
-    if trending_products:
-        print(f"\nFound {len(trending_products)} trending products:")
-        print("\nTop Trending Products:")
-        for i, trend in enumerate(trending_products[:5], 1):
-            print(f"  {i}. {trend['keyword'].title()}")
-            print(f"     Status: {trend['status']} | Confidence: {trend['confidence']:.2f}")
-            print(f"     Velocity: {trend['velocity']:.2f} | Strength: {trend['strength']:.2f}")
-    else:
-        print("\nNo trending products found. Using minimal sample data...")
-        trending_products = [{
-            "keyword": keywords[0] if keywords else "sample product",
-            "status": "Rising",
-            "confidence": 45.0,
-            "velocity": 12.3,
-            "strength": 68.2,
-            "current_value": 68.2,
-            "peak_value": 80.0
-        }]
+    # Display trending products
+    display_trending_products(trending_products)
     
-    # Step 2: Generate Inventory Recommendations (Component B)
-    print("\n" + "=" * 70)
-    print("COMPONENT B: INVENTORY MANAGEMENT RECOMMENDATIONS")
-    print("=" * 70)
+    # Component B: AI Recommendations
+    console.print(Panel.fit(
+        "🤖 Generating AI-Powered Recommendations",
+        border_style="green",
+        box=box.DOUBLE
+    ))
+    console.print()
     
     upcoming_holidays = get_upcoming_holidays()
-    print(f"\nGenerating recommendations based on:")
-    print(f"  - {len(trending_products)} trending products")
-    print(f"  - Current season: {CURRENT_SEASON}")
-    print(f"  - Upcoming events: {', '.join(upcoming_holidays)}")
+    console.print(f"[dim]→ Analyzing {len(trending_products)} trends[/dim]")
+    console.print(f"[dim]→ Season: {CURRENT_SEASON}[/dim]")
+    console.print(f"[dim]→ Events: {', '.join(upcoming_holidays)}[/dim]")
+    console.print()
     
-    recommendations = inventory_agent.generate_recommendations(
-        trending_products,
-        current_season=CURRENT_SEASON,
-        upcoming_holidays=upcoming_holidays
-    )
+    with console.status("[bold green]AI is analyzing data...", spinner="dots"):
+        recommendations = inventory_agent.generate_recommendations(
+            trending_products,
+            current_season=CURRENT_SEASON,
+            upcoming_holidays=upcoming_holidays
+        )
     
-    print("\n" + "-" * 70)
-    print("RECOMMENDATIONS:")
-    print("-" * 70)
-    print(recommendations)
-    print("-" * 70)
+    console.print()
     
-    # Step 3: Display Inventory Status
-    print("\n" + "=" * 70)
-    print("CURRENT INVENTORY STATUS")
-    print("=" * 70)
+    # Display recommendations
+    display_recommendations(recommendations)
     
+    # Display low stock alerts
     low_stock_items = [
         item for item in inventory_manager.get_all_inventory()
         if item.current_stock <= item.reorder_point
     ]
     
-    if low_stock_items:
-        print("\n⚠️  LOW STOCK ALERT:")
-        for item in low_stock_items:
-            print(f"  - {item.product_name}: {item.current_stock} units "
-                  f"(Reorder Point: {item.reorder_point})")
-    else:
-        print("\n✓ All items are above reorder point")
+    display_low_stock_alerts(low_stock_items)
     
-    print("\n" + "=" * 70)
-    print("ANALYSIS COMPLETE")
-    print("=" * 70)
-    print("\nNext Steps:")
-    print("1. Review the recommendations above")
-    print("2. Adjust reorder quantities based on trend analysis")
-    print("3. Update warehouse locations for trending items")
-    print("4. Schedule markdowns for declining items")
-    print("=" * 70)
+    # Footer
+    console.print(Panel.fit(
+        "✅ Analysis Complete\n\n"
+        "Next Steps:\n"
+        "  1. Review recommendations above\n"
+        "  2. Adjust reorder quantities\n"
+        "  3. Update warehouse locations\n"
+        "  4. Schedule markdowns for declining items",
+        title="Summary",
+        border_style="cyan"
+    ))
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\nAnalysis interrupted by user.")
+        console.print("\n\n[yellow]Analysis interrupted by user.[/yellow]")
         sys.exit(0)
     except Exception as e:
-        print(f"\n\nError: {e}")
+        console.print(f"\n\n[bold red]Error:[/bold red] {e}")
         import traceback
-        traceback.print_exc()
+        console.print("[dim]" + traceback.format_exc() + "[/dim]")
         sys.exit(1)
-
