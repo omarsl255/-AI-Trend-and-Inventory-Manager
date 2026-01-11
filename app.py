@@ -3,11 +3,13 @@ Flask Web Application for ATIM
 Upload CSV inventory files and get AI-powered recommendations
 """
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+from flask.json.provider import DefaultJSONProvider
 from werkzeug.utils import secure_filename
 import os
 import sys
 from datetime import datetime
 import traceback
+import numpy as np
 
 # Import ATIM components
 from inventory_data import InventoryManager
@@ -16,7 +18,25 @@ from llm_inventory_agent import InventoryAgent
 from report_generator import ReportGenerator
 from config import CURRENT_SEASON
 
-app = Flask(__name__)
+
+# Custom JSON encoder to handle numpy types
+class NumpyJSONProvider(DefaultJSONProvider):
+    """Custom JSON provider that handles numpy types."""
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.int64)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
+# Check if templates folder exists, if not use current directory
+template_folder = 'templates' if os.path.exists('templates') else '.'
+
+app = Flask(__name__, template_folder=template_folder)
+app.json = NumpyJSONProvider(app)  # Use custom JSON encoder
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['ALLOWED_EXTENSIONS'] = {'csv'}
@@ -66,7 +86,6 @@ def upload_file():
         
         # Process the file
         result = process_inventory(filepath, max_keywords, min_confidence)
-        # Inside process_inventory, before returning:
         
         return jsonify(result)
     
@@ -89,6 +108,23 @@ def process_inventory(csv_filepath, max_keywords=15, min_confidence=20.0):
     Returns:
         Dictionary with analysis results
     """
+    import numpy as np
+    
+    # Helper function to convert numpy/pandas types to Python types
+    def convert_to_python_type(obj):
+        """Convert numpy/pandas types to native Python types."""
+        if isinstance(obj, (np.integer, np.int64)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: convert_to_python_type(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_python_type(item) for item in obj]
+        return obj
+    
     # Initialize components
     inventory_manager = InventoryManager(csv_file=csv_filepath)
     trend_analyzer = TrendAnalyzer()
@@ -131,12 +167,15 @@ def process_inventory(csv_filepath, max_keywords=15, min_confidence=20.0):
             trending_products.append({
                 "keyword": keyword,
                 "status": status,
-                "confidence": confidence,
-                "velocity": velocity,
-                "strength": base_strength,
-                "current_value": base_strength,
-                "peak_value": base_strength * 1.2
+                "confidence": float(confidence),
+                "velocity": float(velocity),
+                "strength": float(base_strength),
+                "current_value": float(base_strength),
+                "peak_value": float(base_strength * 1.2)
             })
+    
+    # Convert trending products to ensure all values are JSON serializable
+    trending_products = convert_to_python_type(trending_products)
     
     # Generate AI recommendations
     upcoming_holidays = ["Labor Day", "Back to School", "Fall Fashion Week"]
@@ -145,6 +184,10 @@ def process_inventory(csv_filepath, max_keywords=15, min_confidence=20.0):
         current_season=CURRENT_SEASON,
         upcoming_holidays=upcoming_holidays
     )
+    
+    # Clean the recommendations for better display
+    from format_utils import clean_llm_output
+    recommendations_clean = clean_llm_output(recommendations)
     
     # Get low stock items
     low_stock_items = [
@@ -166,22 +209,22 @@ def process_inventory(csv_filepath, max_keywords=15, min_confidence=20.0):
         output_file=report_path
     )
     
-    # Prepare response
+    # Prepare response - convert all numpy types to Python types
     return {
         'success': True,
         'inventory_summary': {
-            'total_items': inventory_summary['total_items'],
-            'low_stock_items': inventory_summary['low_stock_items'],
-            'total_value': inventory_summary['total_inventory_value']
+            'total_items': int(inventory_summary['total_items']),
+            'low_stock_items': int(inventory_summary['low_stock_items']),
+            'total_value': float(inventory_summary['total_inventory_value'])
         },
-        'trending_products': trending_products[:10],
-        'recommendations': recommendations,
-        'low_stock_count': len(low_stock_items),
+        'trending_products': convert_to_python_type(trending_products[:10]),
+        'recommendations': str(recommendations_clean),
+        'low_stock_count': int(len(low_stock_items)),
         'low_stock_items': [
             {
-                'product_name': item.product_name,
-                'current_stock': item.current_stock,
-                'reorder_point': item.reorder_point
+                'product_name': str(item.product_name),
+                'current_stock': int(item.current_stock),
+                'reorder_point': int(item.reorder_point)
             }
             for item in low_stock_items
         ],
@@ -209,6 +252,8 @@ if __name__ == '__main__':
     print("=" * 70)
     print("🚀 ATIM Web Application Starting...")
     print("=" * 70)
+    print(f"\n📂 Template folder: {template_folder}")
+    print(f"📂 Upload folder: {app.config['UPLOAD_FOLDER']}")
     print("\n📱 Open your browser and go to:")
     print("   → http://localhost:5000")
     print("\n⌨️  Press Ctrl+C to stop the server\n")
