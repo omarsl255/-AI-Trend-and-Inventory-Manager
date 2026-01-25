@@ -1,41 +1,47 @@
 """
-Component A: Trend Analysis and Prediction
-Fetches real-time search interest data from Google Trends API
+Component A: Trend Analysis and Prediction (SerpAPI Version)
+Fetches real-time search interest data from Google Trends via SerpAPI
 and analyzes trend velocity to identify rising, peaking, or declining trends.
 """
 import pandas as pd
 import numpy as np
-from pytrends.request import TrendReq
+from serpapi import GoogleSearch
 import time
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 import random
-from config import TRENDS_GEO, TRENDS_TIMEFRAME
+from config import TRENDS_GEO, TRENDS_TIMEFRAME, SERPAPI_KEY
 
 
 class TrendAnalyzer:
-    """Analyzes Google Trends data to identify trending products."""
+    """Analyzes Google Trends data to identify trending products using SerpAPI."""
     
     def __init__(self, geo: str = TRENDS_GEO, timeframe: str = TRENDS_TIMEFRAME, max_keywords: int = 15):
         """
-        Initialize the Trend Analyzer.
+        Initialize the Trend Analyzer with SerpAPI.
         
         Args:
             geo: Geographic region for trends (default: US)
             timeframe: Time range for trend analysis (default: last 3 months)
-            max_keywords: Maximum number of keywords to process (default: 15 to avoid rate limits)
+            max_keywords: Maximum number of keywords to process (default: 15)
         """
-        self.pytrends = TrendReq(hl='en-US', tz=360, retries=2, backoff_factor=0.1)
+        if not SERPAPI_KEY:
+            raise ValueError(
+                "SerpAPI key is required. Set SERPAPI_KEY in your .env file.\n"
+                "Get your key at: https://serpapi.com/manage-api-key"
+            )
+        
+        self.api_key = SERPAPI_KEY
         self.geo = geo
         self.timeframe = timeframe
         self.max_keywords = max_keywords
         
     def fetch_trend_data(self, keywords: List[str], max_keywords: Optional[int] = None) -> Dict[str, pd.DataFrame]:
         """
-        Fetch trend data for a list of keywords with improved rate limiting.
+        Fetch trend data for a list of keywords using SerpAPI.
         
         Args:
             keywords: List of keywords to analyze
-            max_keywords: Maximum number of keywords to process (uses self.max_keywords if None)
+            max_keywords: Maximum number of keywords to process
             
         Returns:
             Dictionary mapping keywords to their trend data
@@ -43,57 +49,101 @@ class TrendAnalyzer:
         trend_data = {}
         max_kw = max_keywords or self.max_keywords
         
-        # Limit number of keywords to avoid rate limits
+        # Limit number of keywords
         keywords_to_process = keywords[:max_kw] if len(keywords) > max_kw else keywords
         
         if len(keywords) > max_kw:
-            print(f"   Limiting to first {max_kw} keywords to avoid API rate limits")
+            print(f"   Limiting to first {max_kw} keywords to optimize API usage")
             print(f"   (Total keywords available: {len(keywords)})")
         
-        # Process keywords one at a time with delays to avoid rate limiting
+        # Process keywords one at a time
         for i, keyword in enumerate(keywords_to_process, 1):
-            retries = 3
-            retry_delay = 5  # Start with 5 seconds
-            
-            for attempt in range(retries):
-                try:
-                    # Create new TrendReq instance for each request to avoid connection issues
-                    pytrends = TrendReq(hl='en-US', tz=360, retries=1, backoff_factor=0.1)
+            try:
+                # Build SerpAPI request
+                params = {
+                    "engine": "google_trends",
+                    "q": keyword,
+                    "date": self.timeframe,
+                    "data_type": "TIMESERIES",
+                    "geo": self.geo if self.geo != "US" else "",
+                    "api_key": self.api_key
+                }
+                
+                search = GoogleSearch(params)
+                results = search.get_dict()
+                
+                # Check for errors
+                if "error" in results:
+                    print(f"   [{i}/{len(keywords_to_process)}] Error for '{keyword}': {results['error']}")
+                    continue
+                
+                # Extract timeline data
+                if "interest_over_time" in results:
+                    timeline = results["interest_over_time"]["timeline_data"]
                     
-                    # Process single keyword
-                    pytrends.build_payload([keyword], geo=self.geo, timeframe=self.timeframe)
-                    data = pytrends.interest_over_time()
+                    # Convert to pandas DataFrame
+                    dates = []
+                    values = []
                     
-                    if not data.empty and keyword in data.columns:
-                        trend_data[keyword] = data[[keyword]].copy()
-                        print(f"   [{i}/{len(keywords_to_process)}] Successfully fetched: {keyword}")
-                        break
-                    else:
-                        print(f"   [{i}/{len(keywords_to_process)}] No data available for: {keyword}")
-                        break
+                    for entry in timeline:
+                        dates.append(entry["date"])
+                        # Get the extracted_value which is always an integer
+                        values.append(entry["values"][0]["extracted_value"])
                     
-                except Exception as e:
-                    error_str = str(e)
+                    df = pd.DataFrame({
+                        "date": dates,
+                        keyword: values
+                    })
                     
-                    # Check if it's a rate limit error (429)
-                    if "429" in error_str or "rate limit" in error_str.lower() or "Too Many Requests" in error_str:
-                        if attempt < retries - 1:
-                            wait_time = retry_delay * (2 ** attempt) + random.uniform(1, 3)  # Exponential backoff with jitter
-                            print(f"   Rate limit reached. Waiting {wait_time:.1f} seconds before retry {attempt + 1}/{retries}...")
-                            time.sleep(wait_time)
-                        else:
-                            print(f"   Skipping '{keyword}': Rate limit exceeded after {retries} attempts")
-                    else:
-                        # Other errors - skip after first attempt
-                        print(f"   Skipping '{keyword}': {error_str[:80]}")
-                        break
-            
-            # Wait between keywords to avoid rate limiting
-            if i < len(keywords_to_process):
-                delay = random.uniform(3, 6)  # Random delay between 3-6 seconds
-                time.sleep(delay)
+                    # Set date as index
+                    df.set_index("date", inplace=True)
+                    
+                    trend_data[keyword] = df[[keyword]].copy()
+                    print(f"   [{i}/{len(keywords_to_process)}] ✓ Fetched: {keyword}")
+                else:
+                    print(f"   [{i}/{len(keywords_to_process)}] No data for: {keyword}")
+                
+                # Small delay between requests (SerpAPI handles rate limiting well)
+                if i < len(keywords_to_process):
+                    time.sleep(0.5)  # 500ms delay
+                    
+            except Exception as e:
+                print(f"   [{i}/{len(keywords_to_process)}] Failed '{keyword}': {str(e)[:80]}")
+                continue
         
         return trend_data
+    
+    def fetch_related_queries(self, keyword: str) -> Dict:
+        """
+        Fetch related queries for a keyword to discover trending variations.
+        
+        Args:
+            keyword: Base keyword to analyze
+            
+        Returns:
+            Dictionary with rising and top related queries
+        """
+        try:
+            params = {
+                "engine": "google_trends",
+                "q": keyword,
+                "date": self.timeframe,
+                "data_type": "RELATED_QUERIES",
+                "geo": self.geo if self.geo != "US" else "",
+                "api_key": self.api_key
+            }
+            
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            if "related_queries" in results:
+                return results["related_queries"]
+            else:
+                return {"rising": [], "top": []}
+                
+        except Exception as e:
+            print(f"   Error fetching related queries for '{keyword}': {str(e)[:80]}")
+            return {"rising": [], "top": []}
     
     def calculate_trend_velocity(self, trend_series: pd.Series) -> float:
         """
@@ -157,7 +207,7 @@ class TrendAnalyzer:
         
         Args:
             keywords: List of keywords to analyze
-            max_keywords: Maximum number of keywords to process (uses self.max_keywords if None)
+            max_keywords: Maximum number of keywords to process
             
         Returns:
             List of dictionaries containing trend analysis results, ranked by confidence
@@ -205,7 +255,7 @@ class TrendAnalyzer:
         Args:
             keywords: List of keywords to analyze
             min_confidence: Minimum confidence score threshold
-            max_keywords: Maximum number of keywords to process (uses self.max_keywords if None)
+            max_keywords: Maximum number of keywords to process
             
         Returns:
             Filtered list of high-confidence trends
@@ -220,34 +270,87 @@ class TrendAnalyzer:
             return all_trends
         
         return high_confidence
+    
+    def get_inventory_specific_trends(self, base_keyword: str, inventory_items: List[str]) -> Dict:
+        """
+        Get trends for specific inventory items related to a base keyword.
+        Useful for finding which exact products are trending.
+        
+        Args:
+            base_keyword: Base category (e.g., "Nike Shoes")
+            inventory_items: List of specific products in your inventory
+            
+        Returns:
+            Dictionary with rising and top products
+        """
+        print(f"\nFinding specific trends for: {base_keyword}")
+        related = self.fetch_related_queries(base_keyword)
+        
+        # Match related queries with inventory items
+        rising_matches = []
+        top_matches = []
+        
+        for item in inventory_items:
+            item_lower = item.lower()
+            
+            # Check rising queries
+            for query in related.get("rising", []):
+                if item_lower in query["query"].lower() or query["query"].lower() in item_lower:
+                    rising_matches.append({
+                        "inventory_item": item,
+                        "search_query": query["query"],
+                        "growth": query["value"],
+                        "growth_value": query["extracted_value"]
+                    })
+            
+            # Check top queries
+            for query in related.get("top", []):
+                if item_lower in query["query"].lower() or query["query"].lower() in item_lower:
+                    top_matches.append({
+                        "inventory_item": item,
+                        "search_query": query["query"],
+                        "popularity": query["extracted_value"]
+                    })
+        
+        return {
+            "base_keyword": base_keyword,
+            "rising_in_inventory": rising_matches,
+            "top_in_inventory": top_matches,
+            "all_rising": related.get("rising", [])[:10],
+            "all_top": related.get("top", [])[:10]
+        }
 
 
 if __name__ == "__main__":
     # Example usage
-    analyzer = TrendAnalyzer()
-    
-    # Sample shoe-related keywords
-    shoe_keywords = [
-        "chunky sneakers",
-        "waterproof boots",
-        "espadrilles",
-        "ankle boots",
-        "retro runners",
-        "platform sandals",
-        "minimalist running shoes",
-        "suede boots",
-        "canvas shoes",
-        "running sneakers"
-    ]
-    
-    print("Analyzing trends...")
-    trends = analyzer.get_high_confidence_trends(shoe_keywords, min_confidence=20.0)
-    
-    print("\n=== HIGH-CONFIDENCE TRENDING PRODUCTS ===")
-    for i, trend in enumerate(trends[:10], 1):
-        print(f"\n{i}. {trend['keyword'].title()}")
-        print(f"   Status: {trend['status']}")
-        print(f"   Confidence: {trend['confidence']:.2f}")
-        print(f"   Velocity: {trend['velocity']:.2f}")
-        print(f"   Strength: {trend['strength']:.2f}")
-
+    try:
+        analyzer = TrendAnalyzer()
+        
+        # Sample shoe-related keywords
+        shoe_keywords = [
+            "chunky sneakers",
+            "waterproof boots",
+            "espadrilles",
+            "ankle boots",
+            "retro runners",
+            "platform sandals",
+            "minimalist running shoes",
+            "suede boots",
+            "canvas shoes",
+            "running sneakers"
+        ]
+        
+        print("Analyzing trends using SerpAPI...")
+        trends = analyzer.get_high_confidence_trends(shoe_keywords, min_confidence=20.0)
+        
+        print("\n=== HIGH-CONFIDENCE TRENDING PRODUCTS ===")
+        for i, trend in enumerate(trends[:10], 1):
+            print(f"\n{i}. {trend['keyword'].title()}")
+            print(f"   Status: {trend['status']}")
+            print(f"   Confidence: {trend['confidence']:.2f}")
+            print(f"   Velocity: {trend['velocity']:.2f}")
+            print(f"   Strength: {trend['strength']:.2f}")
+            
+    except ValueError as e:
+        print(f"\nConfiguration Error: {e}")
+        print("Please add SERPAPI_KEY to your .env file")
