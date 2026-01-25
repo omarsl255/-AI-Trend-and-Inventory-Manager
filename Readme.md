@@ -191,6 +191,11 @@ Generates recommendations using sample trend data (requires Gemini API key).
 
 ### Architecture Overview
 
+### Google Trends Settings
+Edit `config.py`:
+```python
+TRENDS_GEO = "US"              # Geographic region
+TRENDS_TIMEFRAME = "today 3-m" # Time range (last 3 months)
 ```
 ┌──────────────────────┐         ┌──────────────────────┐
 │  Component A:        │         │  Component B:        │
